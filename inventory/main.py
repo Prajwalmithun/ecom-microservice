@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 from redis_om import get_redis_connection, HashModel
+from requests import request
 
 
 # to read value defined in .env file
@@ -71,10 +72,23 @@ def createProduct(product: Product):
 def getSpecificProduct(pk: str):
     return Product.get(pk)
 
+# delete the product from the inventory
 @app.delete("/products/{pk}")
 def deleteProduct(pk: str):
     return Product.delete(pk)
 
+# update the product details
+@app.put("/products/update/{pk}")
+def updateProduct(pk: str):
+    prodObj = Product.get(pk)
+
+    body = request.json()
+
+    prodObj['name'] = body['name']
+    prodObj['price'] = body['price']
+    prodObj['quantity_available'] =  prodObj['quantity_available'] + body['new_quantity']
+
+    return prodObj.save()
 
 # @app.get("/")
 # def read_root():

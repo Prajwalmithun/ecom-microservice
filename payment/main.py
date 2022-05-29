@@ -1,10 +1,12 @@
 from typing import Union
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.background import BackgroundTasks
 import os
 from dotenv import load_dotenv
 from redis_om import get_redis_connection, HashModel
-
+from starlette.requests import Request
+import requests, time
 
 # to read value defined in .env file
 load_dotenv()
@@ -41,7 +43,7 @@ class Order(HashModel):
     price: float
     fee: float
     total: float
-    quantity: int
+    quantity_purchase: int
     status: str # pending,success,refunded
 
 
@@ -49,43 +51,48 @@ class Order(HashModel):
     class Meta:
         database = redis
 
-
-# this method to get all the products
-@app.get("/")
-def allProduct():
-    return [format(pk) for pk in Product.all_pks()]
-
-# this is a helper method, just to return the products details
-def format(pk: str):
-    product = Product.get(pk)
-
-    return{
-        'id': product.pk,
-        'name': product.name,
-        'price': product.price,
-        'quantity': product.quantity_available
-
-        }
-
-# this method is for adding products to the DB
-@app.post('/products')
-def createProduct(product: Product):
-    return product.save()
-
-# method to get inndividual product
-@app.get("/products/{pk}")
-def getSpecificProduct(pk: str):
-    return Product.get(pk)
-
-@app.delete("/products/{pk}")
-def deleteProduct(pk: str):
-    return Product.delete(pk)
+# get the order
+# just to test the "status"
+@app.get("/orders/{pk}")
+def getOrder(pk: str):
+    return Order.get(pk)
 
 
-# @app.get("/")
-# def read_root():
-#     return {"Hello":"world"}
+# ordering the product
+@app.post("/orders")
+async def create(request: Request, background_tasks: BackgroundTasks): #parameters = id, quantity
+    body = await request.json()
 
-# @app.get("/items/{item_id}")
-# def read_item(item_id: int, q: Union[str, None] = None):
-#     return {"item_id": item_id, "q": q}
+    # get the product's info from invetory microservice
+    req = requests.get('http://localhost:8000/products/%s' % body['id'])
+
+    product = req.json()
+
+    # parsing the product object
+    order = Order(
+        productID = body['id'],
+        price = product['price'],
+        fee = 0.2 * product['price'],
+        total = 1.2 * product['price'],
+        quantity_purchase = body['quantity_purchase'],
+        status = 'pending'
+    )
+
+    # adding to redis db
+    order.save()
+
+    # for making delay effective because we are using async functions
+    background_tasks.add_task(order_completed, order)
+
+    #order_completed(order)
+    return order 
+
+# This method is for handling status of the order
+def order_completed(order: Order):
+    # adding 5sec delay for payment processing
+    time.sleep(5)
+    order.status = 'success'
+    order.save()
+
+    # updating the quantity_available after the purchase using Redis Stream
+    redis.xadd('order_completed',order.dict(), '*')
