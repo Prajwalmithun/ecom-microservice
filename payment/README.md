@@ -1,8 +1,8 @@
 # INSTALLATION
 
- 
+| packages | Usage                     |
+| -------- | ------------------------- | 
 |fastapi   | API development framework |  
-| -------- | ------------------------- |
 |uvicorn   | Server to host api        | 
 |redis-om  | Database, Message queue   |
  
